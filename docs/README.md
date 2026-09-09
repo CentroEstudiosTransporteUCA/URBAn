@@ -11,3 +11,5 @@ of a blank slate.
   schema is the source of truth; this doc is a UI spec on top of it, not a duplicate of it.
   References TraTrac's `src/tratrac/CHECK_COMMAND.md` for the `tratrac --check --json`
   contract this editor validates against.
+- [`PRODUCTION_MVP.md`](PRODUCTION_MVP.md) — full production-MVP checklist, ordered by value to
+  civil engineers, with the realistic congress-presentation cutoff marked.
