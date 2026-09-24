@@ -11,5 +11,8 @@ of a blank slate.
   schema is the source of truth; this doc is a UI spec on top of it, not a duplicate of it.
   References TraTrac's `src/tratrac/CHECK_COMMAND.md` for the `tratrac --check --json`
   contract this editor validates against.
-- [`PRODUCTION_MVP.md`](PRODUCTION_MVP.md) — full production-MVP checklist, ordered by value to
-  civil engineers, with the realistic congress-presentation cutoff marked.
+
+Feature tracking and status live in
+[GitHub Issues](https://github.com/CentroEstudiosTransporteUCA/URBAn/issues) and the org's
+[Traffic Analysis Pipeline project board](https://github.com/orgs/CentroEstudiosTransporteUCA/projects/1),
+not in a checklist here.
