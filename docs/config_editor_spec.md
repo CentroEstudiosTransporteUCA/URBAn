@@ -1,31 +1,41 @@
 # TraTrac — Especificación de UI del cliente Tauri
 
-> Movido desde el repositorio TraTrac (`docs/tauri_ui_spec.md`) — es un documento de diseño
-> de esta UI (URBAn), no del motor de extracción de trayectorias.
+Editor de configuración para generar un `run.toml` válido para `tratrac` (el paso de
+percepción de TraTrac) y lanzarlo.
 
-Editor de configuración para generar un `run.toml` válido y lanzar `tratrac`.
-
-La fuente de verdad del esquema es `application/config.py` (`RunConfig.resolve`) en el
-repositorio **TraTrac** (`src/tratrac/application/config.py`) y la plantilla
-`tratrac.example.toml`. Esta UI es un **editor fiel** de ese esquema:
-el paquete **no tiene defaults ocultos** — toda clave es obligatoria — así que la UI
-debe (a) preconfigurar valores sensatos y (b) reflejar exactamente las validaciones del
-resolver.
+La fuente de verdad del esquema es el docstring de módulo de `application/config.py`
+(`RunConfig.resolve`) en el repositorio **TraTrac** (`src/tratrac/application/config.py`) y la
+plantilla `tratrac.example.toml`. Esta UI es un **editor fiel** de ese esquema: el paquete **no
+tiene defaults ocultos** — toda clave es obligatoria — así que la UI debe (a) precargar valores
+sensatos y (b) reflejar exactamente las validaciones del resolver.
 
 ---
+
+## Alcance: solo el config de `tratrac`, no el pipeline completo
+
+Esta pantalla cubre **únicamente** el `RunConfig` de `tratrac` — el paso de percepción
+(detección + tracking, escribe el record Parquet). No cubre:
+
+- **`tratrac-preprocess`** — resuelve la escala GSD y el ego-motion, y escribe el archivo de
+  transforms compartido que `tratrac` necesita (`input.transforms_in` abajo). Es un
+  **prerequisito obligatorio** de todo run, incluso con cámara estática — ver "El campo
+  `transforms_in`" más abajo. Conducir este paso desde la UI (elegir método de calibración,
+  cargar `background_zones.json` para ego-motion) es una pantalla propia, aún no diseñada.
+- **`tratrac-postprocess`** — filtrado, proyección de mundo, y suavizado; produce el `.trj`. Ver
+  "Pos-proceso" al final.
 
 ## Principios de diseño (leer antes de implementar)
 
 1. **La UI es la proveedora de defaults que el paquete deliberadamente no tiene.**
    Precargar cada campo con los valores de `tratrac.example.toml`. El operador edita
-   3 campos, no 20. El archivo escrito sigue siendo completo y explícito, así que la
+   pocos campos, no todos. El archivo escrito sigue siendo completo y explícito, así que la
    garantía de reproducibilidad se mantiene.
 
 2. **No reimplementar la validación en JS/Rust — derivará de `resolve()`.**
-   Las restricciones inline son solo pistas de UX. La autoridad debe ser un comando
-   `tratrac --check` (ya implementado en TraTrac — ver
-   `src/tratrac/CHECK_COMMAND.md` en ese repositorio) que corra `RunConfig.resolve` y
-   emita los problemas agregados de `ConfigError` como JSON; Tauri lo invoca por shell. Así
+   Las restricciones inline son solo pistas de UX. La autoridad debe ser
+   `tratrac --config <archivo> --check --json` (ya implementado en TraTrac — ver el docstring de
+   módulo de `src/tratrac/cli.py` en ese repositorio) que corre `RunConfig.resolve` y emite los
+   problemas agregados de `ConfigError` como JSON; Tauri lo invoca por shell. Así
    `application/config.py` sigue siendo la única fuente de verdad.
 
 3. **`--force` es estado de la acción de ejecución, NO un campo del formulario.**
@@ -39,6 +49,17 @@ resolver.
 
 ---
 
+## El campo `transforms_in` (prerequisito, no un formulario propio)
+
+`input.transforms_in` (abajo) espera la ruta a un archivo JSON-Lines ya producido por
+`tratrac-preprocess estimate` (y, opcionalmente, `project`) — **no** un valor que este editor
+resuelve. Hasta que exista una pantalla dedicada para conducir `tratrac-preprocess`, este campo
+es un simple **selector de archivo** apuntando a un `.jsonl` generado por fuera de la UI (por
+línea de comandos). Esto es intencional, no un campo a medio implementar: `tratrac` en sí mismo
+nunca resuelve escala, ego-motion, ni homografía — siempre lee este archivo. Ya no existen
+secciones `[calibration]`/`[ego_motion]` en el config de `tratrac` (ver "Campos por sección" —
+fueron removidas, no renombradas, cuando ese cálculo se movió a `tratrac-preprocess`).
+
 ## Campos por sección
 
 ### `[input]`
@@ -46,41 +67,20 @@ resolver.
 | --- | --- | --- |
 | `video` | selector de archivo (mp4…) | debe existir en disco (la CLI lo verifica) |
 | `process_fps` | número + toggle "cada frame" | `>= 0`; `0.0` = procesar cada frame |
+| `transforms_in` | selector de archivo (`.jsonl`) | debe existir en disco; ver sección anterior |
 
 ### `[detector]`
 | Clave | Widget | Restricción |
 | --- | --- | --- |
-| `name` | dropdown | enum: `yolov8_visdrone` \| `rt_detr` |
+| `name` | dropdown | enum: `yolov8_visdrone` (default actual) \| `rt_detr` (inactivo) \| `yolo_obb` (aún no es el default) |
 | `checkpoint` | texto (precargar según `name`) | id de repo HF |
 | `conf` | slider | `[0, 1]` |
-| `filename` | texto | obligatorio incluso para `rt_detr` (que lo ignora) |
+| `filename` | texto | obligatorio para los tres detectores (aunque `rt_detr`/`yolo_obb` lo ignoren) |
 
 ### `[runtime]`
 | Clave | Widget | Restricción |
 | --- | --- | --- |
 | `device` | segmented + spinner de índice | `cpu` \| `mps` \| `cuda[:N]` |
-
-### `[calibration]` — **radio de "exactamente uno"**
-Control con forma de árbol; un radio (no campos independientes) es la affordance correcta
-porque especificar A **y** B es error.
-
-- **Opción A** — `meters_per_pixel`: número `> 0`.
-- **Opción B** — `drone_model`: dropdown **poblado desde `known_models()`** (no hardcodear)
-  + sub-elección de altitud:
-  - `altitude_m`: número `> 0`, **o**
-  - `srt`: selector de archivo (sidecar DJI `.SRT`).
-
-### `[ego_motion]`
-`enabled` (toggle) gatea los 5 parámetros; colapsarlos cuando está off.
-
-| Clave | Widget | Restricción |
-| --- | --- | --- |
-| `enabled` | toggle | — |
-| `n_features` | int | `> 0` |
-| `match_ratio` | slider | `(0, 1)` |
-| `min_matches` | int | `>= 2` |
-| `ransac_threshold` | número | `> 0` |
-| `min_anchor_overlap` | slider | `(0, 1)` |
 
 ### `[tracker]`
 | Clave | Widget | Restricción |
@@ -90,9 +90,7 @@ porque especificar A **y** B es error.
 ### `[export]`
 | Clave | Widget | Restricción |
 | --- | --- | --- |
-| `out` | selector de guardado (`.parquet`) | no vacío; salida primaria del run |
-| `transform_csv` | path opcional, "" = off | **requiere `ego_motion.enabled`** |
-| `anchors_dir` | directorio opcional, "" = off | **requiere `ego_motion.enabled`** |
+| `out` | selector de guardado (`.parquet`) | no vacío; salida primaria del run — el record Parquet, **no** un `.trj` |
 
 ### `[window]`
 | Clave | Widget | Restricción |
@@ -105,6 +103,8 @@ porque especificar A **y** B es error.
 | --- | --- | --- |
 | `timing_csv` | path opcional, "" = off | CSV de timings por frame |
 
+`force` **no** es una clave de config en ninguna sección — ver Principio 3.
+
 ---
 
 ## Acción de ejecución (fuera del TOML)
@@ -116,6 +116,7 @@ porque especificar A **y** B es error.
 ## Pos-proceso (siguiente pantalla, opcional)
 
 El run es solo percepción: produce el record Parquet, no un `.trj`. Un `.trj` se obtiene
-con `tratrac-postprocess RECORD --out run.trj [...]`. Si la UI lo cubre, sus inputs serían
-otra pantalla (filtros de exclusión, `--calibration`, parámetros de suavizado) — fuera del
+con `tratrac-postprocess RECORD --transforms TRANSFORMS.jsonl --out run.trj [...]` (el mismo
+archivo de transforms que `input.transforms_in` arriba). Si la UI lo cubre, sus inputs serían
+otra pantalla (filtros de exclusión, proyección de mundo, parámetros de suavizado) — fuera del
 alcance de este editor de config.
