@@ -9,7 +9,7 @@ of a blank slate.
   a Tauri client that generates a `run.toml` for TraTrac and launches `tratrac --config`.
   Written from TraTrac's `application/config.py` schema (the `RunConfig` resolver) — that
   schema is the source of truth; this doc is a UI spec on top of it, not a duplicate of it.
-  References TraTrac's `src/tratrac/CHECK_COMMAND.md` for the `tratrac --check --json`
+  References TraTrac's `src/tratrac/cli.py` module docstring for the `tratrac --check --json`
   contract this editor validates against.
 
 Feature tracking and status live in
